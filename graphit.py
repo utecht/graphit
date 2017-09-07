@@ -1,14 +1,21 @@
 import rdflib
+import argparse
 from rdflib.namespace import RDF, Namespace, NamespaceManager
 
-ontology = rdflib.Graph()
+parser = argparse.ArgumentParser(description='Produce graphviz dot file from RDF individuals.')
+parser.add_argument('rdf', help='the rdf individuals to be graphed')
+parser.add_argument('ontology', help='the ontology file for class names')
+parser.add_argument('output', help='where to write the dot file')
+
+args = parser.parse_args()
+
 graph = rdflib.Graph()
+graph.parse(args.rdf)
 
-obo = Namespace('http://purl.obolibrary.org/obo/')
+ontology = rdflib.Graph()
+ontology.parse(args.ontology)
+
 obo_namespace = NamespaceManager(ontology)
-
-ontology.parse('gathered.owl')
-graph.parse('rdf.xml')
 
 data = {}
 
@@ -67,10 +74,7 @@ for subj in graph.subjects():
 for i, d in enumerate(data.keys()):
     data[d]['short'] = 'g{}'.format(i)
 
-from pprint import pprint
-pprint(data)
-
-with open('out.dot', 'w') as f:
+with open(args.output, 'w') as f:
     f.write("digraph structs {\n")
     f.write('rankdir=LR;\n')
     for node in data:
