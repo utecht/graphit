@@ -2,10 +2,20 @@ import rdflib
 import argparse
 from rdflib.namespace import RDF, Namespace, NamespaceManager
 
-parser = argparse.ArgumentParser(description='Produce graphviz dot file from RDF individuals.')
-parser.add_argument('rdf', help='the rdf individuals to be graphed')
-parser.add_argument('ontology', help='the ontology file for class names')
-parser.add_argument('output', help='where to write the dot file')
+parser = argparse.ArgumentParser(
+        description='Produce graphviz dot file from RDF individuals.')
+parser.add_argument('rdf',
+        help='the rdf individuals to be graphed')
+parser.add_argument('ontology',
+        help='the ontology file for class names')
+parser.add_argument('output',
+        help='where to write the dot file')
+parser.add_argument('--uri',
+        help='restrict output to triples related to URI')
+parser.add_argument('--depth',
+        help='depth to restrict output from related URI', type=int, default=1)
+parser.add_argument('--simple',
+        help='simplify output', action='store_true')
 
 args = parser.parse_args()
 
@@ -36,7 +46,30 @@ def wrap(text):
     else:
         return text
 
-for subj in graph.subjects():
+def calc_depth(g, start):
+    tbd_nodes = {start: 0}
+    depths = {}
+    while len(tbd_nodes) > 0:
+        node, cur_depth = tbd_nodes.popitem()
+        depths[node] = cur_depth
+        for neighbor in g.objects(node, None):
+            if neighbor not in depths.keys() and neighbor not in tbd_nodes.keys():
+                tbd_nodes[neighbor] = cur_depth + 1
+        for neighbor in g.subjects(None, node):
+            if neighbor not in depths.keys() and neighbor not in tbd_nodes.keys():
+                tbd_nodes[neighbor] = cur_depth + 1
+    return depths
+
+subjects = graph.subjects()
+if args.uri:
+    #restrict subjects to only subjects with a depth of args.depth
+    depths = calc_depth(graph, rdflib.URIRef(args.uri))
+    subjects = []
+    for subj in depths.keys():
+        if depths[subj] <= args.depth:
+            subjects.append(subj)
+
+for subj in subjects:
     if(subj not in data.keys()):
         sub = subj
         subj = str(subj)
@@ -82,7 +115,9 @@ with open(args.output, 'w') as f:
         properties = ""
         if('data_properties' in n):
             for dp in n['data_properties']:
-                properties += "|{}\l{}\l{}\l".format(wrap(dp['label']), wrap(dp['qname']), wrap(dp['value']))
+                properties += "|{}\l{}\l{}\l".format(wrap(dp['label']),
+                                                     wrap(dp['qname']),
+                                                     wrap(dp['value']))
         type_info = ""
         color = "orange"
         if('types' in n):
@@ -94,9 +129,15 @@ with open(args.output, 'w') as f:
                 if 'qname' in t:
                     qname = t['qname']
                 type_info += "{}\l{}\l".format(wrap(label), clean(wrap(qname)))
+                if(args.simple):
+                    type_info = "{}\l".format(wrap(label))
                 color = "blue"
-        f.write('{} [shape=record,label="{}\l{}{}",color={}]\n'.format(n['short'], wrap(node), type_info, properties, color))
-        #f.write('{} [shape=record,label="{}{}"]\n'.format(n['short'], type_info, properties))
+        if(args.simple):
+            f.write('{} [shape=record,label="{}",color={}]\n'.format(
+                    n['short'], type_info, color))
+        else:
+            f.write('{} [shape=record,label="{}\l{}{}",color={}]\n'.format(
+                    n['short'], wrap(node), type_info, properties, color))
         if('connections' in n):
             for conn in n['connections']:
                 if(conn['to'] in data):
@@ -108,7 +149,10 @@ with open(args.output, 'w') as f:
                     if 'qname' in conn:
                         qname = conn['qname']
                     conn_details = '{}\l{}\l'.format(label, qname)
-                    f.write('{} -> {} [label="{}"]\n'.format(n['short'], conn_name, conn_details))
+                    if(args.simple):
+                        conn_details = '{}\l'.format(label)
+                    f.write('{} -> {} [label="{}"]\n'.format(
+                            n['short'], conn_name, conn_details))
                 else:
                     print('bad connection: {}'.format(conn))
     f.write("}")
